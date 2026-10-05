@@ -14,6 +14,7 @@ One shared source for the `run.sh` and `run.ps1` launchers that are currently co
 | --- | --- |
 | `run.sh` | The launcher for Git Bash, macOS and Linux. The same file for every project. |
 | `run.ps1` | The launcher for PowerShell, with the same behavior. The same file for every project. |
+| `sync.sh`, `sync.ps1` | Copy the launcher into project folders, or check that their copies are still identical. |
 | `examples/<project>/run.conf` | The config that reproduces each of the three projects' current launcher. |
 | `tests/` | Launcher tests for both shells and the throwaway stack they start. |
 
@@ -98,6 +99,35 @@ Fixing a bug in the copies means editing six files in three repositories, and th
 - `run.ps1` no longer rewrites the whole `.env` with LF line endings when it changes a port, and `run.sh` no longer does so in Git Bash.
 - Both scripts fall back to the default for the same stored values (empty, not a number, or starting with 0).
 
+## Vendoring into a project
+
+The projects get real copies of `run.sh` and `run.ps1`, made by a sync script run from a clone of this repository. Nothing is fetched when a project is cloned or started.
+
+```
+./sync.sh ../site ../java-rest-example ../EZPoll            # Git Bash, macOS, Linux
+.\sync.ps1 ..\site ..\java-rest-example ..\EZPoll           # PowerShell
+```
+
+For every folder this overwrites `run.sh` and `run.ps1` and writes `run.version`, one line holding the commit of this repository the copies came from. It refuses to run while `run.sh` or `run.ps1` have uncommitted changes, so that the recorded commit always contains the copied files. `run.conf` belongs to the project and is never touched.
+
+The drift check compares the copies byte for byte with this clone and exits 1 if one differs or is missing:
+
+```
+./sync.sh --check ../site ../java-rest-example ../EZPoll
+.\sync.ps1 -Check ..\site ..\java-rest-example ..\EZPoll
+```
+
+To update the projects after a launcher fix:
+
+1. Merge the fix here and pull `main`.
+2. Run the sync command above.
+3. In each project, commit `run.sh`, `run.ps1` and `run.version` on a branch and open one pull request per project.
+4. Run the check to confirm nothing was left behind.
+
+A project that adopts the launcher for the first time also adds its `run.conf` (start from `examples/`), keeps `*.sh` and `*.ps1` as `eol=lf` in its `.gitattributes` (a CRLF checkout counts as drift, and bash cannot run it), and sets the executable bit once with `git update-index --chmod=+x run.sh`.
+
+The check is not wired into any CI yet. It can only pass after the projects have adopted the launcher, and it belongs in each project's workflow: check out this repository at the commit in `run.version`, then run `sync.sh --check` against the project.
+
 ## Constraints
 
 - Each project must still work when cloned on its own and offline. No submodule that breaks a plain `git clone`, and no `curl | bash` at run time.
@@ -106,7 +136,7 @@ Fixing a bug in the copies means editing six files in three repositories, and th
 
 ## Design
 
-1. **Vendor, do not fetch.** Not implemented yet, see [#4](https://github.com/Nate314/compose-launcher/issues/4). Keep the single implementation here and copy it into each project with `git subtree` or a small sync script, plus a check that the vendored copies are byte-identical to this repository. Downloaders get plain files.
+1. **Vendor, do not fetch.** The sync script and the drift check are implemented, and no project has been synced yet, see [#4](https://github.com/Nate314/compose-launcher/issues/4). Keep the single implementation here and copy it into each project with `git subtree` or a small sync script, plus a check that the vendored copies are byte-identical to this repository. Downloaders get plain files.
 2. **Data-driven.** Implemented. One generic launcher plus a small per-project config (port variables and defaults, the labels used when printing URLs), so the vendored copies do not differ between projects.
 3. **Tests as a compose service.** Not implemented yet, see [#2](https://github.com/Nate314/compose-launcher/issues/2). Add an `e2e` service to each project's `docker-compose.yml` behind a `profiles` entry (official Playwright image, `network_mode: host`, ports taken from `.env`). Then `docker compose --profile e2e run --rm e2e` runs the Playwright suite in either shell, and `./run.sh test` is a one-line pass-through. This replaces the long `docker run` commands in the READMEs. This part has not been tried yet.
 4. **Launcher tests.** Implemented in `tests/` and run on Windows only so far, see [#3](https://github.com/Nate314/compose-launcher/issues/3). Automate the checks that were done by hand: native process on the default port, stale `.env`, a second and third stack starting back to back, rerun while running.
@@ -116,7 +146,8 @@ Fixing a bug in the copies means editing six files in three repositories, and th
 These were open questions. The choices below are defaults that can be overruled in review.
 
 - **Two implementations, bash and PowerShell, with identical behavior.** Running the launcher inside a container would leave a single implementation, but it would need a wrapper per shell anyway and could not probe the host's ports without host networking.
-- **A sync script instead of `git subtree`**, so the projects receive plain files and no history rewrite. The script and the drift check are tracked in [#4](https://github.com/Nate314/compose-launcher/issues/4).
+- **A sync script instead of `git subtree`**, so the projects receive plain files and no history rewrite. One pull request per project carries an update, opened by hand.
+- **The drift check is the sync script in check mode**, run locally after a sync. Running it in each project's CI is the intended next step once the projects have adopted the launcher.
 
 ## Open questions
 
