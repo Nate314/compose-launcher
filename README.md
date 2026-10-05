@@ -148,11 +148,11 @@ These were open questions. The choices below are defaults that can be overruled 
 - **Two implementations, bash and PowerShell, with identical behavior.** Running the launcher inside a container would leave a single implementation, but it would need a wrapper per shell anyway and could not probe the host's ports without host networking.
 - **A sync script instead of `git subtree`**, so the projects receive plain files and no history rewrite. One pull request per project carries an update, opened by hand.
 - **The drift check is the sync script in check mode**, run locally after a sync. Running it in each project's CI is the intended next step once the projects have adopted the launcher.
+- **Visibility:** this repository is public (since 2026-10-05), so the projects that vendor the launcher can link to it.
 
 ## Open questions
 
 - Should first run generate random secrets into `.env` instead of shipping dev-only defaults? (Database passwords only apply when the data volume is first created, so this needs care.)
-- Should this repository be public? The vendored copies are already public inside the three projects.
 
 ## Issues
 
