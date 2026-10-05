@@ -2,10 +2,10 @@
 # Picks free host ports into .env (created on first run), then runs docker compose.
 #   ./run.sh            docker compose up --build -d, then print the URLs
 #   ./run.sh <args>     docker compose <args> (for example: ./run.sh down)
-# Vendored from https://github.com/Nate314/compose-launcher. Do not edit this copy:
-# the per-project settings live in run.conf next to this file.
+# Shared by several projects (https://github.com/Nate314/compose-launcher), which include it
+# as a git submodule. It works on the current folder: the project's run.conf,
+# docker-compose.yml and .env are read from there, not from next to this file.
 set -eu
-cd "$(dirname "$0")"
 
 CONF=run.conf
 PORTS=""  # "VAR=default VAR=default ", in run.conf order
@@ -15,7 +15,7 @@ NOTES=""  # note lines, one per line: "KEY|KEY text"
 die() { echo "run.sh: $*" >&2; exit 1; }
 
 load_config() {
-  [ -f "$CONF" ] || die "$CONF not found next to run.sh"
+  [ -f "$CONF" ] || die "$CONF not found in $PWD: run the launcher from the project folder"
   while read -r kind rest || [ -n "$kind" ]; do
     kind=${kind%$'\r'}
     rest=${rest%$'\r'}

@@ -28,11 +28,11 @@ distinct() { [ "$(printf '%s\n' "$@" | sort -u | wc -l)" -eq $# ]; }
 stack_dir() { echo "$WORK/$ID-$1"; }
 new_stack() {
   mkdir "$(stack_dir "$1")"
-  cp "$ROOT/tests/fixture/docker-compose.yml" "$ROOT/tests/fixture/run.conf" "$ROOT/run.sh" "$(stack_dir "$1")/"
+  cp "$ROOT/tests/fixture/docker-compose.yml" "$ROOT/tests/fixture/run.conf" "$(stack_dir "$1")/"
 }
 launch() { # launch <stack> [args...]: sets OUT and RC
   s=$1; shift
-  OUT=$(bash "$(stack_dir "$s")/run.sh" "$@" 2>&1); RC=$?
+  OUT=$(cd "$(stack_dir "$s")" && bash "$ROOT/run.sh" "$@" 2>&1); RC=$?
 }
 compose() { s=$1; shift; (cd "$(stack_dir "$s")" && docker compose "$@" 2>/dev/null); }
 env_of() { sed -n "s/^$2=//p" "$(stack_dir "$1")/.env" | tail -n 1; }
