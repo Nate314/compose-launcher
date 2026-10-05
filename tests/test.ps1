@@ -40,12 +40,15 @@ function Get-StackDir([string]$Stack) { Join-Path $Work "$Id-$Stack" }
 function New-Stack([string]$Stack) {
     $dir = Get-StackDir $Stack
     New-Item -ItemType Directory -Path $dir | Out-Null
-    Copy-Item (Join-Path $Root 'tests/fixture/docker-compose.yml'), (Join-Path $Root 'tests/fixture/run.conf'), (Join-Path $Root 'run.ps1') $dir
+    Copy-Item (Join-Path $Root 'tests/fixture/docker-compose.yml'), (Join-Path $Root 'tests/fixture/run.conf') $dir
 }
 function Invoke-Launcher([string]$Stack) {
-    $script = Join-Path (Get-StackDir $Stack) 'run.ps1'
+    $script = Join-Path $Root 'run.ps1'
     $launcherArgs = $args
-    $lines = Invoke-Native { & $Shell -NoProfile -ExecutionPolicy Bypass -File $script @launcherArgs }
+    Push-Location (Get-StackDir $Stack)
+    try {
+        $lines = Invoke-Native { & $Shell -NoProfile -ExecutionPolicy Bypass -File $script @launcherArgs }
+    } finally { Pop-Location }
     $script:LastOutput = @($lines)
     @{ Output = ($lines -join "`n"); ExitCode = $LASTEXITCODE }
 }

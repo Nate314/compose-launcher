@@ -1,14 +1,16 @@
 # Picks free host ports into .env (created on first run), then runs docker compose.
 #   .\run.ps1            docker compose up --build -d, then print the URLs
 #   .\run.ps1 <args>     docker compose <args> (for example: .\run.ps1 down)
-# Vendored from https://github.com/Nate314/compose-launcher. Do not edit this copy:
-# the per-project settings live in run.conf next to this file.
+# Shared by several projects (https://github.com/Nate314/compose-launcher), which include it
+# as a git submodule. It works on the current folder: the project's run.conf,
+# docker-compose.yml and .env are read from there, not from next to this file.
 # No param() block on purpose: $args keeps compose flags such as -d intact.
 $ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot
 
-$ConfFile = Join-Path $PSScriptRoot 'run.conf'
-$EnvFile = Join-Path $PSScriptRoot '.env'
+# .NET file calls do not follow PowerShell's location, so build full paths from it.
+$ProjectDir = (Get-Location).ProviderPath
+$ConfFile = Join-Path $ProjectDir 'run.conf'
+$EnvFile = Join-Path $ProjectDir '.env'
 $Utf8NoBom = New-Object Text.UTF8Encoding $false
 $PortPattern = '^[1-9][0-9]*$'  # a positive decimal number without leading zeros
 $Ports = [ordered]@{}  # variable name to default port, in run.conf order
@@ -21,7 +23,7 @@ function Stop-Launcher([string]$Message) {
 }
 
 function Read-Config {
-    if (-not (Test-Path $ConfFile)) { Stop-Launcher 'run.conf not found next to run.ps1' }
+    if (-not (Test-Path $ConfFile)) { Stop-Launcher "run.conf not found in ${ProjectDir}: run the launcher from the project folder" }
     foreach ($line in [IO.File]::ReadAllLines($ConfFile)) {
         $kind, $rest = $line.Trim() -split '\s+', 2
         $rest = "$rest"
