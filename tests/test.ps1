@@ -133,6 +133,12 @@ try {
     Check 'arguments are passed to docker compose (config --quiet): exit code 0' ($r.ExitCode -eq 0)
     Check 'no port message for the pinned free port' (-not $r.Output.Contains('WEB_PORT'))
     Check 'every existing byte is kept and only ADMIN_PORT is appended' ((Get-EnvBytes d) -ceq "$custom`nADMIN_PORT=$(Get-EnvOf d ADMIN_PORT)`n")
+
+    Write-Host '6. share refuses a project with more than one port'
+    $r = Invoke-Launcher d share
+    Check 'exit code 1' ($r.ExitCode -eq 1)
+    Check 'names the ports in the message' $r.Output.Contains('share needs exactly one port in run.conf, this project has 2: WEB_PORT ADMIN_PORT')
+    Check 'nothing was started' (-not (Test-Running d))
 } finally {
     if (Test-Path $Work) {
         foreach ($dir in Get-ChildItem -Directory $Work) {

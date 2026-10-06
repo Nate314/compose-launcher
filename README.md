@@ -25,6 +25,7 @@ It works on the current folder, which must hold the project's `docker-compose.ym
 - Choose free host ports. Each port starts at its default (8080 for the main web port) and scans upward. A port is busy if something accepts a TCP connection on 127.0.0.1, so native processes count as well as containers. Ports picked earlier in the same run are skipped too.
 - Skip re-validating ports while the project's stack is already running, and re-validate a stale `.env` when it is not, so several stacks can be started back to back without colliding.
 - Print the URLs it picked, and pass any arguments straight to `docker compose` (`./run.sh down`, `./run.sh logs -f`). With no arguments it runs `docker compose up --build -d`.
+- With `share` as the first argument, start the project the same way and then give it a public HTTPS address through ngrok (see below).
 
 Only the lines of the port variables in `.env` are touched: every other byte, including CRLF line endings, is kept. A stored port value that is not a positive number is replaced by the default.
 
@@ -42,6 +43,21 @@ Nothing special is needed. From the project folder:
 If the `compose-launcher` folder is still empty (a plain `git clone` does not fill submodules), the stub runs `git submodule update --init compose-launcher` first. That one step needs network access and a real git clone: a zip download of the project has no submodule information, so there the stub stops with a message. To fetch the submodule up front, clone with `git clone --recurse-submodules <url>`, or run `git submodule update --init` in an existing clone.
 
 In a PowerShell session use `run.ps1`. `bash ./run.sh` there resolves to `C:\WINDOWS\system32\bash.exe`, which is WSL and not Git Bash.
+
+## Sharing a project through ngrok
+
+```
+./run.sh share          # Git Bash, macOS, Linux
+.\run.ps1 share         # PowerShell
+```
+
+This starts the project as usual (or leaves it running), then runs `ngrok http <port>` for the project's port, so someone outside your network can open it. ngrok prints the public URL. Ctrl+C stops sharing, and the stack keeps running.
+
+- It works only when `run.conf` has exactly one `port` line, so the launcher never has to guess which port is the web entry point. With more ports it stops before starting anything and lists them. Of the projects using the launcher, site and quoridor have one port. java-rest-example (app, phpMyAdmin, MySQL) and EZPoll (client, socket server, API, MySQL, phpMyAdmin) have several, and EZPoll could not work through a single tunnel anyway, because the browser also talks to its socket server directly.
+- It needs [ngrok](https://ngrok.com/download) installed, on the PATH, and signed in once with `ngrok config add-authtoken <token>`. Nothing else in the launcher needs ngrok.
+- Anything after `share` goes to ngrok, for example `./run.sh share --basic-auth "user:password"` to put a password in front of the page.
+- Everyone with the URL can use the project. These projects run with development settings and have no real access control, so share only while you need to.
+- How many tunnels can run at once, and whether the address stays the same between runs, depends on your ngrok plan.
 
 ## Adding the launcher to a project
 
@@ -103,6 +119,7 @@ The port variable names must match the ones the project's `docker-compose.yml` i
 3. A second and a third stack started back to back get different ports without editing anything.
 4. A stale `.env` is re-validated once the stack is stopped.
 5. An existing `.env` with custom values keeps every byte, and only the missing port is appended.
+6. `share` stops with a message and starts nothing when `run.conf` has more than one port.
 
 ```
 bash tests/test.sh                                                     # Git Bash, macOS, Linux
@@ -112,7 +129,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\test.ps1 # Windows
 
 The exit code is 0 when every check passes, 1 when a check fails, and 2 when the tests could not start. They need Docker and ports 18080 to 18087 and 18095 free, so run one of them at a time. `tests/test.sh` also needs `python3`, `python` or PowerShell for the native listener: that is a requirement of the test, not of the launcher.
 
-Passing on Windows 11 in Git Bash, PowerShell 7 and Windows PowerShell 5.1. Not run on macOS or Linux yet, see [#3](https://github.com/Nate314/compose-launcher/issues/3). The stubs are not covered by these tests: they were checked by hand in the three projects.
+Passing on Windows 11 in Git Bash, PowerShell 7 and Windows PowerShell 5.1. Not run on macOS or Linux yet, see [#3](https://github.com/Nate314/compose-launcher/issues/3). The stubs are not covered by these tests: they were checked by hand in the projects. Neither is a successful `share`, which needs an ngrok account and network access: it was checked by hand with quoridor.
 
 ## Why a submodule
 

@@ -1,6 +1,7 @@
 # Picks free host ports into .env (created on first run), then runs docker compose.
 #   .\run.ps1            docker compose up --build -d, then print the URLs
 #   .\run.ps1 <args>     docker compose <args> (for example: .\run.ps1 down)
+#   .\run.ps1 share      start as above, then expose the project's only port through ngrok
 # Shared by several projects (https://github.com/Nate314/compose-launcher), which include it
 # as a git submodule. It works on the current folder: the project's run.conf,
 # docker-compose.yml and .env are read from there, not from next to this file.
@@ -112,6 +113,21 @@ function Show-Urls {
 }
 
 Read-Config
+
+# share: allowed only when run.conf has exactly one port, so it never has to guess which one.
+$shareVar = $null
+$launcherArgs = @($args)
+if ($launcherArgs.Count -gt 0 -and $launcherArgs[0] -ceq 'share') {
+    $launcherArgs = @($launcherArgs | Select-Object -Skip 1)  # passed to ngrok
+    if ($Ports.Count -ne 1) {
+        Stop-Launcher "share needs exactly one port in run.conf, this project has $($Ports.Count): $(@($Ports.Keys) -join ' ')"
+    }
+    if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
+        Stop-Launcher 'share needs ngrok on the PATH (https://ngrok.com/download)'
+    }
+    $shareVar = @($Ports.Keys)[0]
+}
+
 $build = @('--build')
 if (docker compose ps --status running -q) {
     Write-Host 'Stack already running: leaving ports unchanged and skipping the rebuild.'
@@ -122,10 +138,15 @@ if (docker compose ps --status running -q) {
     Show-Notes
 }
 
-if ($args.Count -gt 0) {
-    docker compose @args
+if ($launcherArgs.Count -gt 0 -and -not $shareVar) {
+    docker compose @launcherArgs
     exit $LASTEXITCODE
 }
 docker compose up @build -d
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Show-Urls
+if ($shareVar) {
+    Write-Host "Sharing $shareVar through ngrok. Press Ctrl+C to stop sharing (the stack keeps running)."
+    ngrok http (Get-PortOf $shareVar) @launcherArgs
+    exit $LASTEXITCODE
+}

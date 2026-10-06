@@ -138,5 +138,11 @@ check "no port message for the pinned free port" eval '! contains "$OUT" "WEB_PO
 printf '# my settings\r\nSECRET=keep=me\r\nWEB_PORT=18095\r\nOTHER=1\nADMIN_PORT=%s\n' "$(env_of d ADMIN_PORT)" > "$WORK/expected.env"
 check "every existing byte is kept and only ADMIN_PORT is appended" cmp -s "$(stack_dir d)/.env" "$WORK/expected.env"
 
+echo "6. share refuses a project with more than one port"
+launch d share
+check "exit code 1" test "$RC" = 1
+check "names the ports in the message" contains "$OUT" "share needs exactly one port in run.conf, this project has 2: WEB_PORT ADMIN_PORT"
+check "nothing was started" eval '! is_running d'
+
 echo
 if [ "$FAILS" -eq 0 ]; then echo "All checks passed."; else echo "$FAILS check(s) failed."; exit 1; fi
