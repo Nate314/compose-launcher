@@ -2,6 +2,7 @@
 # Picks free host ports into .env (created on first run), then runs docker compose.
 #   ./run.sh            docker compose up --build -d, then print the URLs
 #   ./run.sh <args>     docker compose <args> (for example: ./run.sh down)
+#   ./run.sh share      start as above, then expose the project's only port through ngrok
 # Shared by several projects (https://github.com/Nate314/compose-launcher), which include it
 # as a git submodule. It works on the current folder: the project's run.conf,
 # docker-compose.yml and .env are read from there, not from next to this file.
@@ -100,6 +101,22 @@ print_urls() {
 }
 
 load_config
+
+# share: allowed only when run.conf has exactly one port, so it never has to guess which one.
+SHARE_VAR=
+if [ "${1:-}" = share ]; then
+  shift  # anything after "share" is passed to ngrok
+  count=0
+  names=
+  for spec in $PORTS; do
+    count=$((count + 1))
+    SHARE_VAR=${spec%%=*}
+    names="$names $SHARE_VAR"
+  done
+  [ "$count" -eq 1 ] || die "share needs exactly one port in $CONF, this project has $count:$names"
+  command -v ngrok >/dev/null 2>&1 || die "share needs ngrok on the PATH (https://ngrok.com/download)"
+fi
+
 BUILD=--build
 if [ -n "$(docker compose ps --status running -q)" ]; then
   echo "Stack already running: leaving ports unchanged and skipping the rebuild."
@@ -110,8 +127,12 @@ else
   print_notes
 fi
 
-if [ $# -gt 0 ]; then
+if [ $# -gt 0 ] && [ -z "$SHARE_VAR" ]; then
   exec docker compose "$@"
 fi
 docker compose up $BUILD -d
 print_urls
+if [ -n "$SHARE_VAR" ]; then
+  echo "Sharing $SHARE_VAR through ngrok. Press Ctrl+C to stop sharing (the stack keeps running)."
+  exec ngrok http "$(port_of "$SHARE_VAR")" "$@"
+fi
