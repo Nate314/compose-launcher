@@ -1,6 +1,6 @@
 # compose-launcher
 
-A small launcher for Docker Compose projects: it picks free host ports, writes them to `.env`, runs `docker compose`, and prints the URLs. It exists so that several projects that all default to port 8080 can run side by side without editing anything.
+A small launcher for Docker Compose projects: it picks free host ports, writes them (and random secrets on first run) to `.env`, runs `docker compose`, and prints the URLs. It exists so that several projects that all default to port 8080 can run side by side without editing anything.
 
 The launcher lives only in this repository. A project includes it as a **git submodule** and keeps just two tiny stub scripts and its own `run.conf`. Projects using it:
 
@@ -22,6 +22,7 @@ The launcher lives only in this repository. A project includes it as a **git sub
 It works on the current folder, which must hold the project's `docker-compose.yml` and `run.conf`. Both scripts behave the same:
 
 - Create a git-ignored `.env` on first run if none exists. Existing `.env` files are never overwritten: only the port variables are added or adjusted.
+- When it creates `.env`, also write a random value for every `secret` line in `run.conf`, so the stack does not run on the dev-only defaults in `docker-compose.yml`. See "Secrets" below.
 - Choose free host ports. Each port starts at its default (8080 for the main web port) and scans upward. A port is busy if something accepts a TCP connection on 127.0.0.1, so native processes count as well as containers. Ports picked earlier in the same run are skipped too.
 - Skip re-validating ports while the project's stack is already running, and re-validate a stale `.env` when it is not, so several stacks can be started back to back without colliding.
 - Print the URLs it picked, and pass any arguments straight to `docker compose` (`./run.sh down`, `./run.sh logs -f`). With no arguments it runs `docker compose up --build -d`.
@@ -93,6 +94,7 @@ There are no copies of the launcher to keep in sync. The stubs contain no launch
 | --- | --- |
 | `port NAME DEFAULT` | A host port variable written to `.env`, and the port to start scanning from. The order of the lines is the order in which ports are picked. |
 | `url TEXT` | A line printed after `up`. Every `{NAME}` is replaced by the chosen port. The text is printed as written, so labels can be aligned with spaces. |
+| `secret NAME LENGTH [VOLUME]` | A random value of LENGTH letters and digits, written as `NAME` when the launcher creates `.env`. With VOLUME (a volume name from `docker-compose.yml`), it is skipped while that volume exists, see "Secrets". |
 | `note KEY\|KEY TEXT` | Prints TEXT after the ports were chosen when `.env` sets any of the keys. EZPoll uses it to warn about explicit `ALLOWED_ORIGINS` or `PUBLIC_SOCKET_URL` values. |
 
 The config for java-rest-example:
@@ -108,18 +110,34 @@ url phpMyAdmin: http://localhost:{PMA_PORT}
 url MySQL:      127.0.0.1:{MYSQL_PORT}
 ```
 
+A project with secrets adds lines such as:
+
+```
+secret JWT_SECRET 48
+secret DB_PASSWORD 32 mysql-data
+```
+
 The port variable names must match the ones the project's `docker-compose.yml` interpolates (for example `"${APP_PORT:-8080}:8080"`). The real configs are in each project's root: [site](https://github.com/Nate314/site/blob/master/run.conf), [java-rest-example](https://github.com/Nate314/java-rest-example/blob/master/run.conf), [EZPoll](https://github.com/Nate314/EZPoll/blob/master/run.conf).
+
+## Secrets
+
+The values come from `/dev/urandom` in `run.sh` and from `System.Security.Cryptography.RandomNumberGenerator` in `run.ps1`, and use only `A-Z`, `a-z` and `0-9`, so they are safe in URLs, shell commands and SQL. They are written only when the launcher creates `.env`: an existing `.env` never gets new secrets, so deleting `.env` is the way to get new ones.
+
+A database password only takes effect when the database volume is first created: MySQL keeps the password it was initialised with. So a secret with a VOLUME is not written when that volume already exists for the project (found by the compose labels for the project and volume name, so `COMPOSE_PROJECT_NAME` is respected). The launcher prints a note instead, and the stack keeps the value the volume was created with: the compose default, or the value in the `.env` that was deleted. To change it, follow the project's README on rotating the password, or drop the volume with `./run.sh down -v` and delete `.env` before the next run.
+
+Bare `docker compose up` generates nothing and keeps using the compose defaults.
 
 ## Testing the launcher
 
-`tests/test.sh` checks `run.sh` and `tests/test.ps1` checks `run.ps1`. Both copy the throwaway stack in `tests/fixture` (one `busybox` container publishing two ports) into temp folders, run the launcher from inside each folder against real `docker compose`, and remove everything they started. The five scenarios:
+`tests/test.sh` checks `run.sh` and `tests/test.ps1` checks `run.ps1`. Both copy the throwaway stack in `tests/fixture` (one `busybox` container publishing two ports, with one volume and two secrets) into temp folders, run the launcher from inside each folder against real `docker compose`, and remove everything they started. The seven scenarios:
 
-1. A native process holding the default port is skipped, and the second port skips the one just picked.
+1. A native process holding the default port is skipped, and the second port skips the one just picked. The new `.env` gets both secrets with the right length and characters.
 2. A rerun while the stack is running leaves `.env` and the container alone.
-3. A second and a third stack started back to back get different ports without editing anything.
-4. A stale `.env` is re-validated once the stack is stopped.
+3. A second and a third stack started back to back get different ports and different secrets without editing anything.
+4. A stale `.env` is re-validated once the stack is stopped, and its secrets are not regenerated.
 5. An existing `.env` with custom values keeps every byte, and only the missing port is appended.
 6. `share` stops with a message and starts nothing when `run.conf` has more than one port.
+7. With the volume left over from an earlier run and `.env` deleted, the volume's secret is skipped with a note and the other secret is generated again.
 
 ```
 bash tests/test.sh                                                     # Git Bash, macOS, Linux
@@ -151,7 +169,6 @@ With a submodule the launcher exists once, each project pins the commit it was t
 
 ## Open questions
 
-- Should first run generate random secrets into `.env` instead of shipping dev-only defaults? (Database passwords only apply when the data volume is first created, so this needs care.)
 - Tests as a compose service, see [#2](https://github.com/Nate314/compose-launcher/issues/2): add an `e2e` service to each project's `docker-compose.yml` behind a `profiles` entry, so that `docker compose --profile e2e run --rm e2e` replaces the long `docker run` commands in the project READMEs. Not tried yet.
 
 ## Issues
